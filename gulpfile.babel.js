@@ -1,9 +1,14 @@
-// generated on 2016-04-14 using generator-chrome-extension 0.5.6
+// generated on 2016-04-15 using generator-chrome-extension 0.5.4
 import gulp from 'gulp';
 import gulpLoadPlugins from 'gulp-load-plugins';
 import del from 'del';
 import runSequence from 'run-sequence';
 import {stream as wiredep} from 'wiredep';
+
+import browserify from 'browserify';
+import source from 'vinyl-source-stream';
+import es from 'event-stream';
+
 
 const $ = gulpLoadPlugins();
 
@@ -52,12 +57,12 @@ gulp.task('images', () => {
 
 gulp.task('html',  () => {
   return gulp.src('app/*.html')
-    .pipe($.useref({searchPath: ['.tmp', 'app', '.']}))
     .pipe($.sourcemaps.init())
     .pipe($.if('*.js', $.uglify()))
-    .pipe($.if('*.css', $.cleanCss({compatibility: '*'})))
+    .pipe($.if('*.css', $.minifyCss({compatibility: '*'})))
     .pipe($.sourcemaps.write())
-    .pipe($.if('*.html', $.htmlmin({removeComments: true, collapseWhitespace: true})))
+    .pipe($.useref({searchPath: ['.tmp', 'app', '.']}))
+    .pipe($.if('*.html', $.minifyHtml({conditionals: true, loose: true})))
     .pipe(gulp.dest('dist'));
 });
 
@@ -72,7 +77,7 @@ gulp.task('chromeManifest', () => {
         ]
       }
   }))
-  .pipe($.if('*.css', $.cleanCss({compatibility: '*'})))
+  .pipe($.if('*.css', $.minifyCss({compatibility: '*'})))
   .pipe($.if('*.js', $.sourcemaps.init()))
   .pipe($.if('*.js', $.uglify()))
   .pipe($.if('*.js', $.sourcemaps.write('.')))
@@ -80,11 +85,24 @@ gulp.task('chromeManifest', () => {
 });
 
 gulp.task('babel', () => {
-  return gulp.src('app/scripts.babel/**/*.js')
-      .pipe($.babel({
-        presets: ['es2015']
-      }))
-      .pipe(gulp.dest('app/scripts'));
+  let files = [
+    'contentscript.js',
+    'background.js',
+    'chromereload.js',
+    'popup.js'
+  ];
+
+  let tasks = files.map( file => {
+      return browserify({
+        entries: './app/scripts.babel/' + file,
+        debug: true
+      }).transform('babelify', { presets: ['es2015'] })
+        .bundle()
+        .pipe(source(file))
+        .pipe(gulp.dest('app/scripts'));
+  });
+
+  return es.merge.apply(null, tasks);
 });
 
 gulp.task('clean', del.bind(null, ['.tmp', 'dist']));
